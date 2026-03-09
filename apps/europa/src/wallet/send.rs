@@ -84,9 +84,9 @@ pub fn render(required_confirmations: u32) -> Markup {
                     p class="input-label" { "Tarifa:" }
 
                     div class="wallet-send-fee-options" role="radiogroup" aria-label="Selecciona una tarifa" {
-                        (render_fee_option("slow", "Lento", "~30-60 min", "/assets/svgs/slow.svg", false))
-                        (render_fee_option("medium", "Mediano", "~20-30 min", "/assets/svgs/medium.svg", true))
-                        (render_fee_option("fast", "Rapido", "~10-20 min", "/assets/svgs/rapido.svg", false))
+                        (render_fee_option("slow", "Lento", "/assets/svgs/slow.svg", false))
+                        (render_fee_option("medium", "Mediano", "/assets/svgs/medium.svg", true))
+                        (render_fee_option("fast", "Rapido", "/assets/svgs/rapido.svg", false))
                     }
                 }
 
@@ -110,13 +110,7 @@ pub fn render(required_confirmations: u32) -> Markup {
     }
 }
 
-fn render_fee_option(
-    value: &str,
-    title: &str,
-    eta: &str,
-    icon_src: &str,
-    selected: bool,
-) -> Markup {
+fn render_fee_option(value: &str, title: &str, icon_src: &str, selected: bool) -> Markup {
     html! {
         button
             type="button"
@@ -129,7 +123,7 @@ fn render_fee_option(
                 img class="wallet-send-fee-icon" src=(icon_src) alt="";
                 div class="wallet-send-fee-copy" {
                     p class="wallet-send-fee-title" { (title) }
-                    p class="wallet-send-fee-eta" { (eta) }
+                    p class="wallet-send-fee-eta" data-send-fee-eta=(value) { "--" }
                 }
             }
 

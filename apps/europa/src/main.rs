@@ -59,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/wallet/accounts", get(app))
         .route("/wallet/accounts/create", get(app))
         .route("/wallet/accounts/edit/{idx}", get(app))
+        .nest_service("/meta", ServeDir::new(web_root.join("meta")))
         .nest_service("/assets/svgs", ServeDir::new(web_root.join("svgs")))
         .nest_service("/assets", ServeDir::new(web_root.join("assets")))
         .with_state(AppState {
@@ -91,6 +92,10 @@ fn render_app(config: &AppConfig, btc_to_mxn_rate: Option<f64>) -> Markup {
         Some(rate) => rate.to_string(),
         None => "null".to_owned(),
     };
+    let site_title = "Mi Billetera Bitcoin";
+    let site_description = "Billetera simple para enviar y recibir bitcoin.";
+    let site_origin = format!("http://{}:{}", config.host, config.port);
+    let og_image = format!("{site_origin}/meta/thumbnail.png");
 
     html! {
         (DOCTYPE)
@@ -98,7 +103,19 @@ fn render_app(config: &AppConfig, btc_to_mxn_rate: Option<f64>) -> Markup {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
-                title { "mibilleterabitcoin Billetera" }
+                title { (site_title) }
+                meta name="description" content=(site_description);
+                link rel="preconnect" href="https://fonts.googleapis.com";
+                link rel="preconnect" href="https://fonts.gstatic.com" crossorigin;
+                link
+                    rel="stylesheet"
+                    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Red+Hat+Display:wght@400;500;600;700;800&display=swap";
+                link rel="icon" type="image/svg+xml" href="/assets/svgs/mibilleterabitcoin-icon.svg";
+                meta property="og:title" content=(site_title);
+                meta property="og:description" content=(site_description);
+                meta property="og:image" content=(og_image);
+                meta property="og:url" content=(site_origin);
+                meta property="og:type" content="website";
                 link rel="stylesheet" href="/assets/styles.css";
             }
             body {

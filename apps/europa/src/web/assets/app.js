@@ -18,9 +18,13 @@ const ACCOUNT_STORAGE_KEY = `${STORAGE_KEY}.accounts`;
 const REQUIRED_CONFIRMATIONS = Number(window.APP_CONFIG.required_confirmations) > 0
   ? Number(window.APP_CONFIG.required_confirmations)
   : 3;
+const TX_REFRESH_PAGES_MAX = Number(window.APP_CONFIG.tx_refresh_pages_max) > 0
+  ? Number(window.APP_CONFIG.tx_refresh_pages_max)
+  : 3;
 const BTC_TO_MXN_RATE =
   typeof window.BTC_TO_MXN_RATE === "number" && Number.isFinite(window.BTC_TO_MXN_RATE) ? window.BTC_TO_MXN_RATE : null;
 const ESPLORA_PAGE_SIZE = 25;
+const WALLET_TX_REFRESH_INTERVAL_MS = 60_000;
 
 const ROUTES = {
   landing: "/",
@@ -171,6 +175,10 @@ const navigationState = {
   animatedScreen: null,
   transitionAnimation: null,
 };
+const walletRefreshState = {
+  intervalId: null,
+  lastFocusReloadAt: 0,
+};
 const electrsEsplora = new ElectrsEsploraClass(
   window.APP_CONFIG.electrs_esplora_endpoint,
   window.APP_CONFIG.explorer_endpoint,
@@ -258,8 +266,12 @@ bindEventHandlers();
 boot();
 
 function bindEventHandlers() {
-  window.addEventListener("resize", syncFlashWidth);
+  window.addEventListener("resize", () => {
+    syncFlashWidth();
+  });
   window.addEventListener("popstate", handlePopState);
+  window.addEventListener("focus", handleWalletWindowFocus);
+  document.addEventListener("visibilitychange", handleWalletVisibilityChange);
   window.addEventListener("hashchange", () => {
     if (navigationState.suppressNextHashChange) {
       navigationState.suppressNextHashChange = false;
@@ -901,6 +913,7 @@ function showScreen(activeScreenId, options = {}) {
     navigationState.activeScreenId = activeScreenId;
     syncFlashWidth(nextScreen);
     syncScrollFadeTargets();
+    syncWalletRefreshLifecycle(activeScreenId);
     return;
   }
 
@@ -1038,11 +1051,16 @@ function collapseScreenDisclosures(screen) {
 }
 
 function syncFlashWidth(screen = getVisibleScreen()) {
-  if (!flash || !screen) {
+  const resolvedScreen =
+    screen && typeof screen.getBoundingClientRect === "function"
+      ? screen
+      : getVisibleScreen();
+
+  if (!flash || !resolvedScreen) {
     return;
   }
 
-  const width = Math.round(screen.getBoundingClientRect().width);
+  const width = Math.round(resolvedScreen.getBoundingClientRect().width);
   if (width > 0) {
     flash.style.setProperty("--flash-width", `${width}px`);
   }
@@ -1083,6 +1101,7 @@ function animateCardTransition(currentScreen, nextScreen, activeScreenId, direct
       navigationState.activeScreenId = activeScreenId;
       syncFlashWidth(nextScreen);
       syncScrollFadeTargets();
+      syncWalletRefreshLifecycle(activeScreenId);
     },
   };
 
@@ -1323,6 +1342,7 @@ function renderWallet() {
   }
 
   void ensureWalletChainData();
+  ensureWalletRefreshInterval();
 }
 
 function renderWalletReceive() {
@@ -1410,7 +1430,7 @@ function renderWalletSendSuccess() {
   walletSendSuccessLink.href = txid === "#" ? "#" : electrsEsplora.getTxExplorerUrl(txid);
   const label = walletSendSuccessLink.querySelector("span");
   if (label) {
-    label.textContent = txid === "#" ? "Ver transacción" : txid;
+    label.textContent = "Ver transacción en explorador";
   }
 }
 
@@ -1467,7 +1487,9 @@ async function ensureSendFlowData() {
       (total, utxo) => total + Number(utxo?.value ?? 0),
       0,
     );
-    state.sendFlow.feeRates = resolveSendFeeRates(feeEstimates);
+    const resolvedFees = resolveSendFeeRates(feeEstimates);
+    state.sendFlow.feeRates = resolvedFees.feeRates;
+    state.sendFlow.feeMeta = resolvedFees.feeMeta;
     state.sendFlow.loadedOnce = true;
   } catch (error) {
     state.sendFlow.feeError = error.message || String(error);
@@ -1526,6 +1548,7 @@ async function ensureWalletChainData() {
     state.walletChain.txs = normalizedTxs;
     state.walletChain.lastSeenTxId = normalizedTxs.at(-1)?.txid ?? null;
     state.walletChain.hasMoreTxs = normalizedTxs.length >= ESPLORA_PAGE_SIZE;
+    state.walletChain.loadedPageCount = normalizedTxs.length > 0 ? 1 : 0;
     state.walletChain.loadedOnce = true;
   } catch (error) {
     if (!isWalletChainRequestCurrent(key, requestToken)) {
@@ -1577,6 +1600,9 @@ async function loadMoreWalletTransactions() {
     state.walletChain.txs = appendUniqueTransactions(state.walletChain.txs, normalizedTxs);
     state.walletChain.lastSeenTxId = normalizedTxs.at(-1)?.txid ?? state.walletChain.lastSeenTxId;
     state.walletChain.hasMoreTxs = normalizedTxs.length >= ESPLORA_PAGE_SIZE;
+    if (normalizedTxs.length > 0) {
+      state.walletChain.loadedPageCount += 1;
+    }
   } catch (error) {
     if (!isWalletChainRequestCurrent(key, requestToken)) {
       return;
@@ -1592,6 +1618,123 @@ async function loadMoreWalletTransactions() {
     state.walletChain.loadingMore = false;
     renderWalletChainState();
   }
+}
+
+async function refreshWalletChainData(options = {}) {
+  const { resetPages = false } = options;
+
+  if (
+    getCurrentPath() !== ROUTES.wallet ||
+    !state.activeWallet ||
+    !state.walletChain.address ||
+    state.walletChain.loadingInitial ||
+    state.walletChain.loadingMore
+  ) {
+    return;
+  }
+
+  const account = getActiveWalletAccount();
+  if (!account) {
+    return;
+  }
+
+  const address = getEffectiveWalletAddress(account);
+  const key = buildWalletChainKey(address);
+  if (state.walletChain.key !== key) {
+    await ensureWalletChainData();
+    return;
+  }
+
+  const refreshPageCount = resetPages
+    ? 1
+    : Math.max(1, Math.min(state.walletChain.loadedPageCount || 1, TX_REFRESH_PAGES_MAX));
+  const previousLoadedPageCount = state.walletChain.loadedPageCount || 0;
+  const requestToken = state.walletChain.requestToken + 1;
+  state.walletChain.requestToken = requestToken;
+  state.walletChain.loadingInitial = resetPages;
+  state.walletChain.error = null;
+  if (resetPages) {
+    state.walletChain.txs = [];
+    state.walletChain.lastSeenTxId = null;
+    state.walletChain.hasMoreTxs = false;
+    state.walletChain.loadedPageCount = 0;
+    state.walletChain.loadedOnce = false;
+  }
+  renderWalletChainState();
+
+  try {
+    const [tipHeight, addressStats, refreshedTxs] = await Promise.all([
+      electrsEsplora.getTipHeight(),
+      electrsEsplora.getScriptpubkeyChainStats({ address }),
+      fetchWalletTransactionPages(address, refreshPageCount),
+    ]);
+
+    if (!isWalletChainRequestCurrent(key, requestToken)) {
+      return;
+    }
+
+    const refreshedPages = refreshedTxs.pages;
+    const normalizedRefreshedTxs = refreshedTxs.txs;
+    const staleTail = resetPages
+      ? []
+      : state.walletChain.txs.slice(refreshedPages * ESPLORA_PAGE_SIZE);
+
+    state.walletChain.tipHeight = tipHeight;
+    state.walletChain.balanceSats = calculateWalletBalanceSats(addressStats);
+    state.walletChain.txs = appendUniqueTransactions(normalizedRefreshedTxs, staleTail);
+    state.walletChain.lastSeenTxId = state.walletChain.txs.at(-1)?.txid ?? null;
+    state.walletChain.hasMoreTxs = refreshedTxs.lastPageLength >= ESPLORA_PAGE_SIZE || staleTail.length > 0;
+    state.walletChain.loadedPageCount = resetPages
+      ? refreshedPages
+      : Math.max(previousLoadedPageCount, refreshedPages);
+    state.walletChain.loadedOnce = true;
+  } catch (error) {
+    if (!isWalletChainRequestCurrent(key, requestToken)) {
+      return;
+    }
+
+    state.walletChain.error = error.message || String(error);
+  } finally {
+    if (!isWalletChainRequestCurrent(key, requestToken)) {
+      return;
+    }
+
+    state.walletChain.loadingInitial = false;
+    renderWalletChainState();
+  }
+}
+
+async function fetchWalletTransactionPages(address, pageCount) {
+  let lastSeenTxId = null;
+  let fetchedPages = 0;
+  let lastPageLength = 0;
+  const txs = [];
+
+  while (fetchedPages < pageCount) {
+    const pageTxs = await electrsEsplora.getTxs({
+      address,
+      lastSeenTxId,
+    });
+    const normalizedPageTxs = Array.isArray(pageTxs) ? pageTxs : [];
+    txs.push(...normalizedPageTxs);
+    fetchedPages += 1;
+    lastPageLength = normalizedPageTxs.length;
+
+    if (normalizedPageTxs.length < ESPLORA_PAGE_SIZE) {
+      break;
+    }
+
+    lastSeenTxId = normalizedPageTxs.at(-1)?.txid ?? null;
+    if (!lastSeenTxId) {
+      break;
+    }
+  }
+
+  return {
+    txs,
+    pages: fetchedPages,
+    lastPageLength,
+  };
 }
 
 function renderWalletChainState() {
@@ -2165,6 +2308,7 @@ function createEmptyWalletChainState(requestToken = 0) {
     txs: [],
     lastSeenTxId: null,
     hasMoreTxs: false,
+    loadedPageCount: 0,
     loadingInitial: false,
     loadingMore: false,
     loadedOnce: false,
@@ -2182,6 +2326,11 @@ function createEmptySendFlowState() {
       slow: 1,
       medium: 1,
       fast: 1,
+    },
+    feeMeta: {
+      slow: { feeRateSatVb: 1, targetBlocks: 6 },
+      medium: { feeRateSatVb: 1, targetBlocks: 3 },
+      fast: { feeRateSatVb: 1, targetBlocks: 1 },
     },
     spendableBalanceSats: null,
     spendableUtxos: [],
@@ -2227,6 +2376,62 @@ function clearWalletChainView() {
   walletEmptyState?.classList.add("hidden");
   walletTransactionsSection?.__syncDragEnabled?.();
   syncScrollFadeTargets();
+}
+
+function ensureWalletRefreshInterval() {
+  if (walletRefreshState.intervalId !== null) {
+    return;
+  }
+
+  walletRefreshState.intervalId = window.setInterval(() => {
+    void refreshWalletChainData();
+  }, WALLET_TX_REFRESH_INTERVAL_MS);
+}
+
+function clearWalletRefreshInterval() {
+  if (walletRefreshState.intervalId === null) {
+    return;
+  }
+
+  window.clearInterval(walletRefreshState.intervalId);
+  walletRefreshState.intervalId = null;
+}
+
+function syncWalletRefreshLifecycle(activeScreenId = navigationState.activeScreenId) {
+  if (activeScreenId === "menu-screen" && document.visibilityState === "visible") {
+    ensureWalletRefreshInterval();
+    return;
+  }
+
+  clearWalletRefreshInterval();
+}
+
+function handleWalletVisibilityChange() {
+  if (document.visibilityState !== "visible") {
+    clearWalletRefreshInterval();
+    return;
+  }
+
+  syncWalletRefreshLifecycle();
+  handleWalletFocusRefresh();
+}
+
+function handleWalletWindowFocus() {
+  handleWalletFocusRefresh();
+}
+
+function handleWalletFocusRefresh() {
+  if (getCurrentPath() !== ROUTES.wallet || document.visibilityState === "hidden") {
+    return;
+  }
+
+  const now = Date.now();
+  if (now - walletRefreshState.lastFocusReloadAt < 750) {
+    return;
+  }
+
+  walletRefreshState.lastFocusReloadAt = now;
+  void refreshWalletChainData({ resetPages: true });
 }
 
 function buildWalletChainKey(address) {
@@ -2759,9 +2964,15 @@ function renderSendFeeOptions() {
     option.dataset.selected = String(isSelected);
     option.setAttribute("aria-checked", String(isSelected));
 
+    const feeEta = option.querySelector(`[data-send-fee-eta="${feeKey}"]`);
     const feeBtc = option.querySelector(`[data-send-fee-btc="${feeKey}"]`);
     const feeMxn = option.querySelector(`[data-send-fee-mxn="${feeKey}"]`);
     const estimatedFeeSats = estimateDisplayedSendFeeSats(feeKey);
+    const feeMeta = state.sendFlow.feeMeta[feeKey];
+
+    if (feeEta) {
+      feeEta.textContent = formatSendFeeEta(feeMeta?.targetBlocks);
+    }
 
     if (feeBtc) {
       feeBtc.textContent = estimatedFeeSats === null ? "-- BTC" : formatBtcAmount(estimatedFeeSats);
@@ -2829,7 +3040,7 @@ async function refreshSendPreview() {
       getWalletNetwork(state.activeWallet),
       getAccountSettings().activeIndex,
       recipientAddress,
-      amountSats,
+      BigInt(amountSats),
       feeRateSatVb,
       state.sendFlow.spendableUtxos,
     );
@@ -2844,6 +3055,7 @@ async function refreshSendPreview() {
       return;
     }
 
+    console.error("prepareSendTx failed:", error);
     walletSendBtcInput.setCustomValidity(error.message || String(error));
   } finally {
     if (previewToken !== state.sendFlow.previewToken) {
@@ -2910,22 +3122,71 @@ function estimateDisplayedSendFeeSats(feeKey) {
 }
 
 function resolveSendFeeRates(feeEstimates) {
+  if (window.APP_CONFIG.network !== "mainnet") {
+    return {
+      feeRates: {
+        slow: 1,
+        medium: 4,
+        fast: 10,
+      },
+      feeMeta: {
+        slow: { feeRateSatVb: 1, targetBlocks: 6 },
+        medium: { feeRateSatVb: 4, targetBlocks: 3 },
+        fast: { feeRateSatVb: 10, targetBlocks: 1 },
+      },
+    };
+  }
+
   const resolve = (targets) => {
     for (const target of targets) {
       const value = Number(feeEstimates?.[target]);
       if (Number.isFinite(value) && value > 0) {
-        return value;
+        return {
+          feeRateSatVb: value,
+          targetBlocks: Number(target),
+        };
       }
     }
 
-    return 1;
+    return {
+      feeRateSatVb: 1,
+      targetBlocks: Number(targets[0]) || 1,
+    };
   };
 
-  return {
+  const resolved = {
     slow: resolve(["6", "8", "10"]),
     medium: resolve(["3", "2", "4", "1"]),
     fast: resolve(["1", "2", "3"]),
   };
+
+  return {
+    feeRates: {
+      slow: resolved.slow.feeRateSatVb,
+      medium: resolved.medium.feeRateSatVb,
+      fast: resolved.fast.feeRateSatVb,
+    },
+    feeMeta: resolved,
+  };
+}
+
+function formatSendFeeEta(targetBlocks) {
+  if (!Number.isFinite(targetBlocks) || targetBlocks <= 0) {
+    return "--";
+  }
+
+  const lowerMinutes = Math.max(10, Math.round(targetBlocks * 10));
+  const upperMinutes = Math.max(lowerMinutes, Math.round((targetBlocks + 1) * 10));
+
+  if (upperMinutes < 60) {
+    return `≈${lowerMinutes}-${upperMinutes} min`;
+  }
+
+  const lowerHours = lowerMinutes / 60;
+  const upperHours = upperMinutes / 60;
+  const formatHours = (hours) => Number.isInteger(hours) ? String(hours) : hours.toFixed(1).replace(/\.0$/, "");
+
+  return `≈${formatHours(lowerHours)}-${formatHours(upperHours)} h`;
 }
 
 function sanitizeFreeformInput(value) {

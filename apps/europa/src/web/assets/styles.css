@@ -11,6 +11,7 @@
   --status-yellow: #ffcc00;
   --button-disabled-bg: #494d5a;
   --button-disabled-fg: #777e91;
+  --button-disabled-icon-filter: brightness(0) saturate(100%) invert(55%) sepia(10%) saturate(413%) hue-rotate(186deg) brightness(90%) contrast(89%);
   --radius: 12px;
   --text-sm: 0.85rem;
   --text-md: 0.95rem;
@@ -493,7 +494,7 @@ a {
 
 .screen-submit.unlock-delete-submit {
   width: 100%;
-  background: var(--status-red);
+  background: #f7481a;
   color: var(--secondary);
   display: flex;
   align-items: center;
@@ -926,6 +927,10 @@ a:focus-visible {
     border-color 160ms ease;
 }
 
+.screen-submit img {
+  transition: filter 160ms ease;
+}
+
 .screen-submit:hover:not([aria-disabled="true"]):not(:disabled) {
   background: rgba(255, 255, 255, 0.9);
 }
@@ -935,6 +940,11 @@ a:focus-visible {
   background: var(--button-disabled-bg);
   color: var(--button-disabled-fg);
   cursor: not-allowed;
+}
+
+.screen-submit[aria-disabled="true"] img,
+.screen-submit:disabled img {
+  filter: var(--button-disabled-icon-filter);
 }
 
 .screen-submit[aria-disabled="true"]:hover,
@@ -1499,6 +1509,16 @@ code {
   gap: 8px;
 }
 
+.wallet-send-amount-inputs .input-field:first-child .input-shell {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.wallet-send-amount-inputs .input-field:last-child .input-shell {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 .wallet-send-input-icon {
   width: 16px;
   height: 16px;
@@ -1640,6 +1660,10 @@ code {
   display: flex;
   flex-direction: column;
   gap: 22px;
+}
+
+.wallet-send-result-screen.hidden {
+  display: none;
 }
 
 .wallet-send-result-copy {
@@ -1967,8 +1991,8 @@ code {
 }
 
 .wallet-transaction-explorer-icon {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   transition: transform 160ms ease;
 }
 

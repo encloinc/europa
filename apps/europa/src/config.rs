@@ -37,6 +37,7 @@ pub struct AppConfig {
     pub host: String,
     pub port: u16,
     pub required_confirmations: u32,
+    pub tx_refresh_pages_max: u32,
     pub electrs_esplora_endpoint: String,
     pub explorer_endpoint: String,
     pub btc_mxn_endpoint: String,
@@ -80,6 +81,7 @@ struct RawConfig {
     host: String,
     port: u16,
     required_confirmations: u32,
+    tx_refresh_pages_max: u32,
     electrs_esplora_endpoints: NetworkEndpointMap,
     explorer_endpoints: NetworkEndpointMap,
     btc_mxn_endpoint: String,
@@ -92,6 +94,7 @@ pub struct ClientConfig {
     network: &'static str,
     storage_key: String,
     required_confirmations: u32,
+    tx_refresh_pages_max: u32,
     electrs_esplora_endpoint: String,
     explorer_endpoint: String,
     test_mode_address: Option<String>,
@@ -116,6 +119,9 @@ impl AppConfig {
         if raw.required_confirmations == 0 {
             bail!("config required_confirmations must be greater than zero");
         }
+        if raw.tx_refresh_pages_max == 0 {
+            bail!("config tx_refresh_pages_max must be greater than zero");
+        }
 
         let electrs_esplora_endpoint = raw
             .electrs_esplora_endpoints
@@ -131,6 +137,7 @@ impl AppConfig {
             host: raw.host.trim().to_owned(),
             port: raw.port,
             required_confirmations: raw.required_confirmations,
+            tx_refresh_pages_max: raw.tx_refresh_pages_max,
             electrs_esplora_endpoint,
             explorer_endpoint,
             btc_mxn_endpoint,
@@ -147,6 +154,7 @@ impl AppConfig {
             network: self.network.as_str(),
             storage_key: format!("mibilleterabitcoin.wallet.v1.{}", self.network.as_str()),
             required_confirmations: self.required_confirmations,
+            tx_refresh_pages_max: self.tx_refresh_pages_max,
             electrs_esplora_endpoint: self.electrs_esplora_endpoint.clone(),
             explorer_endpoint: self.explorer_endpoint.clone(),
             test_mode_address: self.test_mode_address.clone(),
