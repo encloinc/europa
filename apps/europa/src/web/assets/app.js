@@ -649,7 +649,7 @@ async function boot() {
       );
     }
 
-    await init(walletEngineResponse);
+    await init({ module_or_path: walletEngineResponse });
     initWallet();
     state.walletReady = true;
   } catch (error) {

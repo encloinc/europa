@@ -4,13 +4,19 @@ mod wallet;
 
 use std::{sync::Arc, time::Duration};
 
-use axum::{Router, extract::State, response::Html, routing::get};
+use axum::{
+    Router,
+    extract::State,
+    http::{HeaderValue, header::CACHE_CONTROL},
+    response::Html,
+    routing::{get, get_service},
+};
 use config::AppConfig;
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use reqwest::Client;
 use serde::Deserialize;
 use tokio::sync::RwLock;
-use tower_http::services::ServeDir;
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 #[derive(Clone)]
 struct AppState {
@@ -37,6 +43,10 @@ async fn main() -> anyhow::Result<()> {
     let web_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/web");
     let http_client = Client::builder().build()?;
     let btc_to_mxn_rate = Arc::new(RwLock::new(None));
+    let no_store_assets = SetResponseHeaderLayer::overriding(
+        CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    );
 
     refresh_btc_to_mxn_rate(&http_client, &config, &btc_to_mxn_rate).await;
     tokio::spawn(run_btc_to_mxn_refresh_loop(
@@ -60,8 +70,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/wallet/accounts/create", get(app))
         .route("/wallet/accounts/edit/{idx}", get(app))
         .nest_service("/meta", ServeDir::new(web_root.join("meta")))
-        .nest_service("/assets/svgs", ServeDir::new(web_root.join("svgs")))
-        .nest_service("/assets", ServeDir::new(web_root.join("assets")))
+        .nest_service(
+            "/assets/svgs",
+            get_service(ServeDir::new(web_root.join("svgs"))).layer(no_store_assets.clone()),
+        )
+        .nest_service(
+            "/assets",
+            get_service(ServeDir::new(web_root.join("assets"))).layer(no_store_assets),
+        )
         .with_state(AppState {
             config: Arc::clone(&config),
             btc_to_mxn_rate,
