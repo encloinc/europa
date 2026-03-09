@@ -39,6 +39,7 @@ const ROUTES = {
   walletBackupReveal: "/wallet/backup/reveal",
   walletReceive: "/wallet/receive",
   walletSend: "/wallet/send",
+  walletSendScan: "/wallet/send/scan",
   walletSendSuccess: "/wallet/send/success",
   walletSendError: "/wallet/send/error",
   walletAccounts: "/wallet/accounts",
@@ -184,6 +185,12 @@ const walletRefreshState = {
   intervalId: null,
   lastFocusReloadAt: 0,
 };
+const walletScanState = {
+  qrScanner: null,
+  starting: false,
+  qrScannerModule: null,
+  workerAvailable: null,
+};
 const electrsEsplora = new ElectrsEsploraClass(
   window.APP_CONFIG.electrs_esplora_endpoint,
   window.APP_CONFIG.explorer_endpoint,
@@ -203,6 +210,7 @@ const ALL_SCREEN_IDS = [
   "wallet-backup-reveal-screen",
   "wallet-receive-screen",
   "wallet-send-screen",
+  "wallet-send-scan-screen",
   "wallet-send-success-screen",
   "wallet-send-error-screen",
   "accounts-screen",
@@ -232,11 +240,14 @@ const walletReceiveAddress = document.getElementById("wallet-receive-address");
 const walletReceiveQr = document.getElementById("wallet-receive-qr");
 const walletSendForm = document.getElementById("wallet-send-form");
 const walletSendAddressInput = document.getElementById("wallet-send-address-input");
+const walletSendScanTrigger = document.getElementById("wallet-send-scan-trigger");
 const walletSendBtcInput = document.getElementById("wallet-send-btc-input");
 const walletSendMxnInput = document.getElementById("wallet-send-mxn-input");
 const walletSendAvailableBtc = document.getElementById("wallet-send-available-btc");
 const walletSendSubmit = document.getElementById("wallet-send-submit");
 const walletSendFeeOptions = [...document.querySelectorAll("[data-send-fee]")];
+const walletSendScanShell = document.getElementById("wallet-send-scan-shell");
+const walletSendScanVideo = document.getElementById("wallet-send-scan-video");
 const walletSendSuccessLink = document.getElementById("wallet-send-success-link");
 const walletSendSuccessBack = document.getElementById("wallet-send-success-back");
 const walletSendErrorBack = document.getElementById("wallet-send-error-back");
@@ -339,6 +350,11 @@ function bindEventHandlers() {
   walletReceiveAction?.addEventListener("click", () => {
     clearFlash();
     navigateTo(ROUTES.walletReceive);
+  });
+
+  walletSendScanTrigger?.addEventListener("click", () => {
+    clearFlash();
+    navigateTo(ROUTES.walletSendScan);
   });
 
   walletBackupAction?.addEventListener("click", () => {
@@ -852,6 +868,12 @@ function syncWalletRoute(options = {}) {
     return;
   }
 
+  if (path === ROUTES.walletSendScan) {
+    clearWalletBackupFlow();
+    showScreen("wallet-send-scan-screen", { direction, immediate });
+    return;
+  }
+
   if (path === ROUTES.walletSendSuccess) {
     clearWalletBackupFlow();
     if (!state.sendFlow.result || state.sendFlow.result.status !== "success") {
@@ -960,6 +982,11 @@ function handleBackNavigation(currentScreenId, targetScreenId) {
     return;
   }
 
+  if (currentPath === ROUTES.walletSendScan && targetScreenId === "wallet-send-screen") {
+    navigateTo(ROUTES.walletSend, "", { direction: "backward" });
+    return;
+  }
+
   if (currentPath === ROUTES.walletSendSuccess && targetScreenId === "wallet-send-screen") {
     navigateTo(ROUTES.walletSend, "", { direction: "backward" });
     return;
@@ -1016,6 +1043,7 @@ function showScreen(activeScreenId, options = {}) {
     syncFlashWidth(nextScreen);
     syncScrollFadeTargets();
     syncWalletRefreshLifecycle(activeScreenId);
+    syncWalletScanLifecycle(activeScreenId);
     return;
   }
 
@@ -1063,6 +1091,7 @@ function isWalletRoute(pathname = getCurrentPath()) {
     path === ROUTES.walletBackupReveal ||
     path === ROUTES.walletReceive ||
     path === ROUTES.walletSend ||
+    path === ROUTES.walletSendScan ||
     path === ROUTES.walletSendSuccess ||
     path === ROUTES.walletSendError ||
     path === ROUTES.walletAccounts ||
@@ -1206,6 +1235,7 @@ function animateCardTransition(currentScreen, nextScreen, activeScreenId, direct
       syncFlashWidth(nextScreen);
       syncScrollFadeTargets();
       syncWalletRefreshLifecycle(activeScreenId);
+      syncWalletScanLifecycle(activeScreenId);
     },
   };
 
@@ -2576,18 +2606,156 @@ function syncWalletRefreshLifecycle(activeScreenId = navigationState.activeScree
   clearWalletRefreshInterval();
 }
 
+function syncWalletScanLifecycle(activeScreenId = navigationState.activeScreenId) {
+  if (activeScreenId === "wallet-send-scan-screen" && document.visibilityState === "visible") {
+    void ensureWalletSendScanner();
+    return;
+  }
+
+  destroyWalletSendScanner();
+}
+
 function handleWalletVisibilityChange() {
   if (document.visibilityState !== "visible") {
     clearWalletRefreshInterval();
+    destroyWalletSendScanner();
     return;
   }
 
   syncWalletRefreshLifecycle();
+  syncWalletScanLifecycle();
   handleWalletFocusRefresh();
 }
 
 function handleWalletWindowFocus() {
   handleWalletFocusRefresh();
+}
+
+async function ensureWalletSendScanner() {
+  if (walletScanState.starting || walletScanState.qrScanner || !walletSendScanVideo || !walletSendScanShell) {
+    return;
+  }
+
+  walletScanState.starting = true;
+  setWalletSendScanReady(false);
+
+  try {
+    const QrScanner = await loadQrScannerModule();
+    const canUseScanner = await canUseWalletSendScanner(QrScanner);
+    if (!canUseScanner) {
+      console.warn(
+        "wallet send scanner unavailable: missing qr-scanner-worker.min.js or camera access is blocked by an insecure context",
+      );
+      return;
+    }
+
+    const hasCamera = await QrScanner.hasCamera();
+    if (!hasCamera) {
+      console.warn("wallet send scanner unavailable: no camera device was reported by the browser");
+      return;
+    }
+
+    const qrScanner = new QrScanner(
+      walletSendScanVideo,
+      (result) => {
+        handleWalletSendScanResult(typeof result === "string" ? result : result?.data ?? "");
+      },
+      {
+        preferredCamera: "environment",
+        returnDetailedScanResult: true,
+        highlightScanRegion: true,
+      },
+    );
+
+    await qrScanner.start();
+    walletScanState.qrScanner = qrScanner;
+    setWalletSendScanReady(true);
+  } catch (error) {
+    walletScanState.qrScanner = null;
+    console.warn("wallet send scanner unavailable:", error);
+    setWalletSendScanReady(false);
+  } finally {
+    walletScanState.starting = false;
+  }
+}
+
+function destroyWalletSendScanner() {
+  walletScanState.starting = false;
+  walletScanState.qrScanner?.destroy();
+  walletScanState.qrScanner = null;
+  setWalletSendScanReady(false);
+}
+
+async function loadQrScannerModule() {
+  if (!walletScanState.qrScannerModule) {
+    walletScanState.qrScannerModule = import("/assets/scripts/qr-scanner.min.js").then((module) => module.default);
+  }
+
+  return walletScanState.qrScannerModule;
+}
+
+async function canUseWalletSendScanner(QrScanner) {
+  const isLocalHttp =
+    window.location.protocol === "http:" &&
+    /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+  if (!window.isSecureContext && !isLocalHttp) {
+    console.warn("wallet send scanner unavailable: camera access requires https outside localhost");
+    return false;
+  }
+
+  if ("BarcodeDetector" in window) {
+    return true;
+  }
+
+  if (walletScanState.workerAvailable !== null) {
+    return walletScanState.workerAvailable;
+  }
+
+  try {
+    const workerUrl = new URL("./qr-scanner-worker.min.js", QrScanner.WORKER_PATH || "/assets/scripts/qr-scanner.min.js");
+    const response = await fetch(workerUrl.href, { method: "HEAD" });
+    walletScanState.workerAvailable = response.ok;
+    if (!response.ok) {
+      console.warn(`wallet send scanner unavailable: missing worker at ${workerUrl.href}`);
+    }
+  } catch (_error) {
+    walletScanState.workerAvailable = false;
+    console.warn("wallet send scanner unavailable: failed to probe qr-scanner worker");
+  }
+
+  return walletScanState.workerAvailable;
+}
+
+function setWalletSendScanReady(isReady) {
+  walletSendScanShell?.setAttribute("data-camera-ready", String(isReady));
+}
+
+function handleWalletSendScanResult(rawValue) {
+  const address = extractBitcoinAddressFromScan(rawValue);
+  if (!address || !validateBitcoinAddress(address, window.APP_CONFIG.network)) {
+    return;
+  }
+
+  destroyWalletSendScanner();
+  if (walletSendAddressInput) {
+    walletSendAddressInput.value = address;
+  }
+  void refreshSendPreview();
+  navigateTo(ROUTES.walletSend, "", { direction: "backward" });
+}
+
+function extractBitcoinAddressFromScan(rawValue) {
+  const normalized = String(rawValue ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (/^bitcoin:/i.test(normalized)) {
+    const withoutScheme = normalized.slice("bitcoin:".length);
+    return withoutScheme.split("?")[0].trim();
+  }
+
+  return normalized;
 }
 
 function handleWalletFocusRefresh() {

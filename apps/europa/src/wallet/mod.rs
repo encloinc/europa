@@ -7,4 +7,5 @@ pub mod dashboard;
 pub mod receive;
 pub mod send;
 pub mod send_error;
+pub mod send_scan;
 pub mod send_success;

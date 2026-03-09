@@ -31,7 +31,11 @@ pub fn render(required_confirmations: u32, network: BitcoinNetwork) -> Markup {
                             required;
                     },
                     None,
-                    None,
+                    Some(html! {
+                        button type="button" class="input-icon-button wallet-send-scan-trigger" id="wallet-send-scan-trigger" aria-label="Escanear direccion" {
+                            img class="input-icon" src="/assets/svgs/scan.svg" alt="";
+                        }
+                    }),
                 ))
 
                 div class="wallet-send-amount-block" {
