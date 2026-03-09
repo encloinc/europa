@@ -189,7 +189,6 @@ const walletScanState = {
   qrScanner: null,
   starting: false,
   qrScannerModule: null,
-  workerAvailable: null,
 };
 const electrsEsplora = new ElectrsEsploraClass(
   window.APP_CONFIG.electrs_esplora_endpoint,
@@ -2643,9 +2642,6 @@ async function ensureWalletSendScanner() {
     const QrScanner = await loadQrScannerModule();
     const canUseScanner = await canUseWalletSendScanner(QrScanner);
     if (!canUseScanner) {
-      console.warn(
-        "wallet send scanner unavailable: missing qr-scanner-worker.min.js or camera access is blocked by an insecure context",
-      );
       return;
     }
 
@@ -2703,27 +2699,7 @@ async function canUseWalletSendScanner(QrScanner) {
     return false;
   }
 
-  if ("BarcodeDetector" in window) {
-    return true;
-  }
-
-  if (walletScanState.workerAvailable !== null) {
-    return walletScanState.workerAvailable;
-  }
-
-  try {
-    const workerUrl = new URL("./qr-scanner-worker.min.js", QrScanner.WORKER_PATH || "/assets/scripts/qr-scanner.min.js");
-    const response = await fetch(workerUrl.href, { method: "HEAD" });
-    walletScanState.workerAvailable = response.ok;
-    if (!response.ok) {
-      console.warn(`wallet send scanner unavailable: missing worker at ${workerUrl.href}`);
-    }
-  } catch (_error) {
-    walletScanState.workerAvailable = false;
-    console.warn("wallet send scanner unavailable: failed to probe qr-scanner worker");
-  }
-
-  return walletScanState.workerAvailable;
+  return true;
 }
 
 function setWalletSendScanReady(isReady) {
