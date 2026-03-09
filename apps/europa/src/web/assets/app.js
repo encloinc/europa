@@ -2903,7 +2903,7 @@ function getTransactionCounterpartyAddress(tx, ownedAddress, isSending) {
   if (isSending) {
     const recipientOutput = getFirstExternalOutput(tx, ownedAddress);
     if (!recipientOutput) {
-      return "tú";
+      return "ti";
     }
     return recipientOutput?.scriptpubkey_address || recipientOutput?.scriptpubkey || "Direccion no disponible";
   }
