@@ -1,6 +1,8 @@
 use maud::{Markup, html};
 
-pub fn render() -> Markup {
+use crate::config::BitcoinNetwork;
+
+pub fn render(network: BitcoinNetwork) -> Markup {
     html! {
         section
             id="menu-screen"
@@ -23,8 +25,8 @@ pub fn render() -> Markup {
 
                     div class="wallet-balance-block" {
                         p class="wallet-balance-main" {
-                            img class="wallet-balance-icon" src="/assets/svgs/bitcoin.svg" alt="";
-                            span id="wallet-balance-primary" { "-- BTC" }
+                            img class="wallet-balance-icon" src=(network.bitcoin_icon_src()) alt="";
+                            span id="wallet-balance-primary" { "-- " (network.bitcoin_symbol()) }
                         }
                         p id="wallet-balance-fiat" class="wallet-balance-fiat" { "≈ -- MXN" }
                     }
@@ -49,6 +51,17 @@ pub fn render() -> Markup {
                             }
                             div class="wallet-action-copy" {
                                 span class="wallet-action-label" { "Recibir" }
+                            }
+                        }
+
+                        button type="button" class="wallet-action-tile" id="wallet-backup-action" {
+                            div class="wallet-action-visual" {
+                                span class="wallet-action-icon-shell" {
+                                    img class="wallet-action-icon" src="/assets/svgs/lock.svg" alt="";
+                                }
+                            }
+                            div class="wallet-action-copy" {
+                                span class="wallet-action-label" { "Respaldar" }
                             }
                         }
                     }

@@ -25,6 +25,8 @@ const BTC_TO_MXN_RATE =
   typeof window.BTC_TO_MXN_RATE === "number" && Number.isFinite(window.BTC_TO_MXN_RATE) ? window.BTC_TO_MXN_RATE : null;
 const ESPLORA_PAGE_SIZE = 25;
 const WALLET_TX_REFRESH_INTERVAL_MS = 60_000;
+const NETWORK_BITCOIN_SYMBOL = getNetworkBitcoinSymbol(window.APP_CONFIG.network);
+const NETWORK_BITCOIN_ICON_SRC = getNetworkBitcoinIconSrc(window.APP_CONFIG.network);
 
 const ROUTES = {
   landing: "/",
@@ -33,6 +35,8 @@ const ROUTES = {
   unlockWallet: "/unlock-wallet",
   unlockWalletDelete: "/unlock-wallet/delete",
   wallet: "/wallet",
+  walletBackup: "/wallet/backup",
+  walletBackupReveal: "/wallet/backup/reveal",
   walletReceive: "/wallet/receive",
   walletSend: "/wallet/send",
   walletSendSuccess: "/wallet/send/success",
@@ -159,6 +163,7 @@ const state = {
   walletReady: false,
   walletChain: createEmptyWalletChainState(),
   sendFlow: createEmptySendFlowState(),
+  walletBackupAuthorized: false,
 };
 
 const CARD_TRANSITION_DURATION = 220;
@@ -194,6 +199,8 @@ const ALL_SCREEN_IDS = [
   "unlock-screen",
   "unlock-delete-screen",
   "menu-screen",
+  "wallet-backup-password-screen",
+  "wallet-backup-reveal-screen",
   "wallet-receive-screen",
   "wallet-send-screen",
   "wallet-send-success-screen",
@@ -212,6 +219,8 @@ const walletCardScroll = document.getElementById("wallet-card-scroll");
 const walletAccountCard = document.getElementById("wallet-account-card");
 const walletSendAction = document.getElementById("wallet-send-action");
 const walletReceiveAction = document.getElementById("wallet-receive-action");
+const walletBackupAction = document.getElementById("wallet-backup-action");
+const walletBackupMnemonicSlots = [...document.querySelectorAll("[data-wallet-backup-word-slot]")];
 const walletAccountName = document.getElementById("wallet-account-name");
 const walletAddress = document.getElementById("wallet-address");
 const walletBalancePrimary = document.getElementById("wallet-balance-primary");
@@ -238,6 +247,7 @@ const importPhraseForm = document.getElementById("import-phrase-form");
 const importPasswordForm = document.getElementById("import-password-form");
 const unlockForm = document.getElementById("unlock-form");
 const verifyForm = document.getElementById("verify-form");
+const walletBackupForm = document.getElementById("wallet-backup-form");
 const accountCreateForm = document.getElementById("account-create-form");
 const accountEditForm = document.getElementById("account-edit-form");
 const accountCreateNameInput = document.getElementById("account-create-name");
@@ -248,6 +258,7 @@ const trackedForms = [
   importPasswordForm,
   unlockForm,
   verifyForm,
+  walletBackupForm,
   walletSendForm,
   accountCreateForm,
   accountEditForm,
@@ -328,6 +339,11 @@ function bindEventHandlers() {
   walletReceiveAction?.addEventListener("click", () => {
     clearFlash();
     navigateTo(ROUTES.walletReceive);
+  });
+
+  walletBackupAction?.addEventListener("click", () => {
+    clearFlash();
+    navigateTo(ROUTES.walletBackup);
   });
 
   walletAccountsList?.addEventListener("click", (event) => {
@@ -501,6 +517,47 @@ function bindEventHandlers() {
       navigateTo(ROUTES.wallet);
     } catch (error) {
       setFlash("No se pudo descifrar la billetera. Verifica la contraseña y la red.");
+    }
+  });
+
+  walletBackupForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearFlash();
+
+    if (!ensureWalletReady()) {
+      return;
+    }
+
+    const payload = loadEncryptedWallet();
+    const password = document.getElementById("wallet-backup-password")?.value ?? "";
+
+    if (!payload || !state.activeWallet) {
+      navigateTo(ROUTES.unlockWallet);
+      return;
+    }
+
+    try {
+      const wallet = normalizeWalletRecord(await decryptWallet(payload, password));
+
+      if (normalizeNetworkName(wallet.network) !== window.APP_CONFIG.network) {
+        throw new Error(
+          `Stored wallet network ${wallet.network} does not match configured network ${window.APP_CONFIG.network}.`,
+        );
+      }
+
+      if (wallet.mnemonic !== state.activeWallet.mnemonic) {
+        throw new Error("La contraseña no corresponde a la billetera activa.");
+      }
+
+      state.walletBackupAuthorized = true;
+      fillWalletBackupMnemonicGrid(state.activeWallet.mnemonic);
+      walletBackupForm.reset();
+      resetPasswordVisibility(walletBackupForm);
+      syncFormButtonStates();
+      navigateTo(ROUTES.walletBackupReveal);
+    } catch (_error) {
+      state.walletBackupAuthorized = false;
+      setFlash("No se pudo verificar la contraseña de la billetera.");
     }
   });
 
@@ -756,24 +813,46 @@ function syncWalletRoute(options = {}) {
   initializeAccountSettings();
 
   if (path === ROUTES.wallet) {
+    clearWalletBackupFlow();
     renderWallet();
     showScreen("menu-screen", { direction, immediate });
     return;
   }
 
+  if (path === ROUTES.walletBackup) {
+    clearWalletBackupFlow();
+    prepareWalletBackupForm();
+    showScreen("wallet-backup-password-screen", { direction, immediate });
+    return;
+  }
+
+  if (path === ROUTES.walletBackupReveal) {
+    if (!state.walletBackupAuthorized || !state.activeWallet) {
+      navigateTo(ROUTES.walletBackup, "", { direction: "backward", immediate });
+      return;
+    }
+
+    fillWalletBackupMnemonicGrid(state.activeWallet.mnemonic);
+    showScreen("wallet-backup-reveal-screen", { direction, immediate });
+    return;
+  }
+
   if (path === ROUTES.walletReceive) {
+    clearWalletBackupFlow();
     renderWalletReceive();
     showScreen("wallet-receive-screen", { direction, immediate });
     return;
   }
 
   if (path === ROUTES.walletSend) {
+    clearWalletBackupFlow();
     renderWalletSend();
     showScreen("wallet-send-screen", { direction, immediate });
     return;
   }
 
   if (path === ROUTES.walletSendSuccess) {
+    clearWalletBackupFlow();
     if (!state.sendFlow.result || state.sendFlow.result.status !== "success") {
       navigateTo(ROUTES.walletSend, "", { direction: "backward", immediate });
       return;
@@ -785,6 +864,7 @@ function syncWalletRoute(options = {}) {
   }
 
   if (path === ROUTES.walletSendError) {
+    clearWalletBackupFlow();
     if (!state.sendFlow.result || state.sendFlow.result.status !== "error") {
       navigateTo(ROUTES.walletSend, "", { direction: "backward", immediate });
       return;
@@ -796,12 +876,14 @@ function syncWalletRoute(options = {}) {
   }
 
   if (path === ROUTES.walletAccounts) {
+    clearWalletBackupFlow();
     renderAccountsList();
     showScreen("accounts-screen", { direction, immediate });
     return;
   }
 
   if (path === ROUTES.walletAccountsCreate) {
+    clearWalletBackupFlow();
     prepareAccountCreateForm();
     showScreen("account-create-screen", { direction, immediate });
     return;
@@ -813,6 +895,7 @@ function syncWalletRoute(options = {}) {
     return;
   }
 
+  clearWalletBackupFlow();
   showScreen("account-edit-screen", { direction, immediate });
 }
 
@@ -853,6 +936,16 @@ function handleBackNavigation(currentScreenId, targetScreenId) {
 
   if (currentPath === ROUTES.walletAccounts && targetScreenId === "menu-screen") {
     navigateTo(ROUTES.wallet, "", { direction: "backward" });
+    return;
+  }
+
+  if (currentPath === ROUTES.walletBackup && targetScreenId === "menu-screen") {
+    navigateTo(ROUTES.wallet, "", { direction: "backward" });
+    return;
+  }
+
+  if (currentPath === ROUTES.walletBackupReveal && targetScreenId === "wallet-backup-password-screen") {
+    navigateTo(ROUTES.walletBackup, "", { direction: "backward" });
     return;
   }
 
@@ -965,6 +1058,8 @@ function isWalletRoute(pathname = getCurrentPath()) {
   const path = normalizePath(pathname);
   return (
     path === ROUTES.wallet ||
+    path === ROUTES.walletBackup ||
+    path === ROUTES.walletBackupReveal ||
     path === ROUTES.walletReceive ||
     path === ROUTES.walletSend ||
     path === ROUTES.walletSendSuccess ||
@@ -1270,6 +1365,13 @@ function fillMnemonicGrid(mnemonic) {
   const words = mnemonic.split(" ");
   mnemonicSlots.forEach((slot, index) => {
     slot.querySelector(".word-value").textContent = words[index] || "----";
+  });
+}
+
+function fillWalletBackupMnemonicGrid(mnemonic) {
+  const words = mnemonic.split(" ");
+  walletBackupMnemonicSlots.forEach((slot, index) => {
+    slot.querySelector(".word-value").textContent = words[index] || "••••";
   });
 }
 
@@ -1827,7 +1929,7 @@ function createWalletTransactionCard(tx, ownedAddress, tipHeight) {
 
   const bitcoinIcon = document.createElement("img");
   bitcoinIcon.className = "wallet-transaction-bitcoin-icon";
-  bitcoinIcon.src = "/assets/svgs/bitcoin.svg";
+  bitcoinIcon.src = NETWORK_BITCOIN_ICON_SRC;
   bitcoinIcon.alt = "";
 
   const statusBadge = document.createElement("span");
@@ -2223,6 +2325,7 @@ function forgetStoredWallet() {
   clearCreateState();
   clearImportForm();
   clearRenderedWalletAccount();
+  clearWalletBackupFlow();
   clearWalletReceive();
   clearWalletSend();
   clearFlash();
@@ -2234,6 +2337,7 @@ function lockWalletSession() {
   invalidateWalletChainState();
   resetSendResultState();
   clearRenderedWalletAccount();
+  clearWalletBackupFlow();
   clearWalletReceive();
   clearWalletSend();
   clearFlash();
@@ -2372,7 +2476,7 @@ function resetSendResultState() {
 
 function clearWalletChainView() {
   if (walletBalancePrimary) {
-    walletBalancePrimary.textContent = "-- BTC";
+    walletBalancePrimary.textContent = `-- ${NETWORK_BITCOIN_SYMBOL}`;
   }
 
   if (walletBalanceFiat) {
@@ -2492,6 +2596,33 @@ function normalizeServiceBaseUrl(value) {
   return String(value ?? "").replace(/\/+$/, "");
 }
 
+function getNetworkBitcoinSymbol(network) {
+  switch (normalizeNetworkName(network)) {
+    case "testnet3":
+    case "testnet4":
+      return "tBTC";
+    case "signet":
+      return "sBTC";
+    case "regtest":
+      return "rBTC";
+    default:
+      return "BTC";
+  }
+}
+
+function getNetworkBitcoinIconSrc(network) {
+  switch (normalizeNetworkName(network)) {
+    case "testnet3":
+    case "testnet4":
+    case "regtest":
+      return "/assets/svgs/bitcoin-green.svg";
+    case "signet":
+      return "/assets/svgs/bitcoin-pink.svg";
+    default:
+      return "/assets/svgs/bitcoin.svg";
+  }
+}
+
 function getEffectiveWalletAddress(account) {
   return window.APP_CONFIG.test_mode_address || account?.address || "";
 }
@@ -2508,11 +2639,11 @@ function getNetStatsBalance(stats) {
 
 function formatBtcAmount(balanceSats) {
   if (!Number.isFinite(balanceSats)) {
-    return "-- BTC";
+    return `-- ${NETWORK_BITCOIN_SYMBOL}`;
   }
 
   const btc = (balanceSats / 100_000_000).toFixed(8).replace(/\.?0+$/, "");
-  return `${btc || "0"} BTC`;
+  return `${btc || "0"} ${NETWORK_BITCOIN_SYMBOL}`;
 }
 
 function formatMxnApprox(balanceSats) {
@@ -2669,6 +2800,23 @@ function clearImportForm() {
   resetPasswordVisibility(importPasswordForm);
   syncPasswordStrengthIndicators(importPasswordForm);
   syncFormButtonStates();
+}
+
+function prepareWalletBackupForm() {
+  walletBackupForm?.reset();
+  resetPasswordVisibility(walletBackupForm);
+  syncFormButtonStates();
+}
+
+function clearWalletBackupFlow() {
+  state.walletBackupAuthorized = false;
+  prepareWalletBackupForm();
+  walletBackupMnemonicSlots.forEach((slot) => {
+    const value = slot.querySelector(".word-value");
+    if (value) {
+      value.textContent = "••••";
+    }
+  });
 }
 
 function bindSubmitState(form) {
@@ -2983,13 +3131,26 @@ function renderSendFeeOptions() {
     }
 
     if (feeBtc) {
-      feeBtc.textContent = estimatedFeeSats === null ? "-- BTC" : formatBtcAmount(estimatedFeeSats);
+      feeBtc.textContent = formatSendFeeRate(feeMeta?.feeRateSatVb);
     }
 
     if (feeMxn) {
       feeMxn.textContent = estimatedFeeSats === null ? "-- MXN" : formatMxnValue(estimatedFeeSats);
     }
   });
+}
+
+function formatSendFeeRate(feeRateSatVb) {
+  const rate = Number(feeRateSatVb);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return "-- sats/vbyte";
+  }
+
+  if (rate < 1) {
+    return "1 sat/byte";
+  }
+
+  return `${trimTrailingZeros(rate.toFixed(2))} sats/vbyte`;
 }
 
 function syncSendAvailableBalance() {

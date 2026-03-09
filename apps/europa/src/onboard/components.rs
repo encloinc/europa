@@ -15,6 +15,28 @@ pub fn breadcrumbs(current_step: usize, total_steps: usize) -> Markup {
     }
 }
 
+pub fn flow_topbar(back_target: Option<&str>, step: Option<(usize, usize)>) -> Markup {
+    html! {
+        div class="flow-topbar" {
+            @if let Some(target) = back_target {
+                button type="button" class="back-arrow" data-back=(target) aria-label="Regresar" {
+                    img class="back-arrow-icon" src="/assets/svgs/back.svg" alt="";
+                }
+            } @else {
+                span class="topbar-control-placeholder" aria-hidden="true" {}
+            }
+
+            div class="topbar-center" {
+                @if let Some((current_step, total_steps)) = step {
+                    (breadcrumbs(current_step, total_steps))
+                }
+            }
+
+            span class="topbar-control-placeholder" aria-hidden="true" {}
+        }
+    }
+}
+
 pub fn flow_header(
     back_target: Option<&str>,
     step: Option<(usize, usize)>,
@@ -23,23 +45,7 @@ pub fn flow_header(
 ) -> Markup {
     html! {
         div class="flow-header" {
-            div class="flow-topbar" {
-                @if let Some(target) = back_target {
-                    button type="button" class="back-arrow" data-back=(target) aria-label="Regresar" {
-                        img class="back-arrow-icon" src="/assets/svgs/back.svg" alt="";
-                    }
-                } @else {
-                    span class="topbar-control-placeholder" aria-hidden="true" {}
-                }
-
-                div class="topbar-center" {
-                    @if let Some((current_step, total_steps)) = step {
-                        (breadcrumbs(current_step, total_steps))
-                    }
-                }
-
-                span class="topbar-control-placeholder" aria-hidden="true" {}
-            }
+            (flow_topbar(back_target, step))
 
             div class="screen-copy flow-copy" {
                 h2 class="screen-title flow-title" { (title) }

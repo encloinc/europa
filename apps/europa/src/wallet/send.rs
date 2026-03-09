@@ -1,8 +1,9 @@
 use maud::{Markup, html};
 
+use crate::config::BitcoinNetwork;
 use crate::onboard::components::input_field;
 
-pub fn render(required_confirmations: u32) -> Markup {
+pub fn render(required_confirmations: u32, network: BitcoinNetwork) -> Markup {
     html! {
         section id="wallet-send-screen" class="screen card card-compact wallet-send-screen hidden" {
             div class="wallet-subpage-header" {
@@ -51,7 +52,7 @@ pub fn render(required_confirmations: u32) -> Markup {
                             },
                             None,
                             Some(html! {
-                                img class="wallet-send-input-icon" src="/assets/svgs/bitcoin.svg" alt="";
+                                img class="wallet-send-input-icon" src=(network.bitcoin_icon_src()) alt="";
                             }),
                         ))
 
@@ -75,8 +76,8 @@ pub fn render(required_confirmations: u32) -> Markup {
 
                     p class="wallet-send-available" {
                         "Disponibles: "
-                        span id="wallet-send-available-btc" { "-- BTC" }
-                        img class="wallet-send-available-icon" src="/assets/svgs/bitcoin.svg" alt="";
+                        span id="wallet-send-available-btc" { "-- " (network.bitcoin_symbol()) }
+                        img class="wallet-send-available-icon" src=(network.bitcoin_icon_src()) alt="";
                     }
                 }
 
@@ -91,7 +92,7 @@ pub fn render(required_confirmations: u32) -> Markup {
                 }
 
                 div class="wallet-send-footer" {
-                    img class="wallet-send-footer-icon" src="/assets/svgs/3-bitcoin.svg" alt="";
+                    img class="wallet-send-footer-icon" src=(network.bitcoin_triple_icon_src()) alt="";
                     p class="wallet-send-footer-copy" {
                         "Los envíos necesitan "
                         span class="wallet-send-footer-emphasis" { (required_confirmations) " confirmaciones" }
@@ -128,7 +129,7 @@ fn render_fee_option(value: &str, title: &str, icon_src: &str, selected: bool) -
             }
 
             div class="wallet-send-fee-values" {
-                p class="wallet-send-fee-btc" data-send-fee-btc=(value) { "-- BTC" }
+                p class="wallet-send-fee-btc" data-send-fee-btc=(value) { "-- sats/vbyte" }
                 p class="wallet-send-fee-mxn" data-send-fee-mxn=(value) { "-- MXN" }
             }
         }

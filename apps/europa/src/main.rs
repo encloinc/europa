@@ -43,10 +43,8 @@ async fn main() -> anyhow::Result<()> {
     let web_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/web");
     let http_client = Client::builder().build()?;
     let btc_to_mxn_rate = Arc::new(RwLock::new(None));
-    let no_store_assets = SetResponseHeaderLayer::overriding(
-        CACHE_CONTROL,
-        HeaderValue::from_static("no-store"),
-    );
+    let no_store_assets =
+        SetResponseHeaderLayer::overriding(CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
     refresh_btc_to_mxn_rate(&http_client, &config, &btc_to_mxn_rate).await;
     tokio::spawn(run_btc_to_mxn_refresh_loop(
@@ -62,6 +60,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/unlock-wallet", get(app))
         .route("/unlock-wallet/delete", get(app))
         .route("/wallet", get(app))
+        .route("/wallet/backup", get(app))
+        .route("/wallet/backup/reveal", get(app))
         .route("/wallet/receive", get(app))
         .route("/wallet/send", get(app))
         .route("/wallet/send/success", get(app))
@@ -109,7 +109,7 @@ fn render_app(config: &AppConfig, btc_to_mxn_rate: Option<f64>) -> Markup {
         None => "null".to_owned(),
     };
     let site_title = "Mi Billetera Bitcoin";
-    let site_description = "Billetera simple para enviar y recibir bitcoin.";
+    let site_description = "La libertad financiera comienza aquí.";
     let site_origin = format!("http://{}:{}", config.host, config.port);
     let og_image = format!("{site_origin}/meta/thumbnail.png");
 
@@ -152,9 +152,11 @@ fn render_app(config: &AppConfig, btc_to_mxn_rate: Option<f64>) -> Markup {
                         (onboard::import::render())
                         (onboard::unlock::render())
                         (onboard::unlock_delete::render())
-                        (wallet::dashboard::render())
-                        (wallet::receive::render(config.required_confirmations))
-                        (wallet::send::render(config.required_confirmations))
+                        (wallet::dashboard::render(config.network))
+                        (wallet::backup::render())
+                        (wallet::backup_reveal::render())
+                        (wallet::receive::render(config.required_confirmations, config.network))
+                        (wallet::send::render(config.required_confirmations, config.network))
                         (wallet::send_success::render())
                         (wallet::send_error::render())
                         (wallet::accounts::render())
@@ -162,9 +164,11 @@ fn render_app(config: &AppConfig, btc_to_mxn_rate: Option<f64>) -> Markup {
                         (wallet::accounts_edit::render())
                     }
 
-                    p class="network-note" {
-                        "Network: "
-                        span { (config.network.as_str()) }
+                    @if config.network != config::BitcoinNetwork::Mainnet {
+                        p class="network-note" {
+                            "Network: "
+                            span { (config.network.as_str()) }
+                        }
                     }
                 }
 

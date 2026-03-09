@@ -1,6 +1,8 @@
 pub mod accounts;
 pub mod accounts_create;
 pub mod accounts_edit;
+pub mod backup;
+pub mod backup_reveal;
 pub mod dashboard;
 pub mod receive;
 pub mod send;

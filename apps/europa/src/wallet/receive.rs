@@ -1,6 +1,8 @@
 use maud::{Markup, html};
 
-pub fn render(required_confirmations: u32) -> Markup {
+use crate::config::BitcoinNetwork;
+
+pub fn render(required_confirmations: u32, network: BitcoinNetwork) -> Markup {
     html! {
         section id="wallet-receive-screen" class="screen card card-compact wallet-receive-screen hidden" {
             div class="wallet-receive-topbar" {
@@ -19,7 +21,7 @@ pub fn render(required_confirmations: u32) -> Markup {
             div class="wallet-receive-qr-shell" {
                 div id="wallet-receive-qr" class="wallet-receive-qr" aria-hidden="true" {}
                 div class="wallet-receive-qr-badge" {
-                    img class="wallet-receive-qr-badge-icon" src="/assets/svgs/bitcoin.svg" alt="";
+                    img class="wallet-receive-qr-badge-icon" src=(network.bitcoin_icon_src()) alt="";
                 }
             }
 
@@ -31,7 +33,7 @@ pub fn render(required_confirmations: u32) -> Markup {
             }
 
             div class="wallet-receive-footer" {
-                img class="wallet-receive-footer-icon" src="/assets/svgs/3-bitcoin.svg" alt="";
+                img class="wallet-receive-footer-icon" src=(network.bitcoin_triple_icon_src()) alt="";
                 p class="wallet-receive-footer-copy" {
                     "Los depósitos necesitan "
                     span class="wallet-receive-footer-emphasis" { (required_confirmations) " confirmaciones" }

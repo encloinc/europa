@@ -29,6 +29,31 @@ impl BitcoinNetwork {
             Self::Regtest => "regtest",
         }
     }
+
+    pub fn bitcoin_symbol(self) -> &'static str {
+        match self {
+            Self::Mainnet => "BTC",
+            Self::Testnet3 | Self::Testnet4 => "tBTC",
+            Self::Signet => "sBTC",
+            Self::Regtest => "rBTC",
+        }
+    }
+
+    pub fn bitcoin_icon_src(self) -> &'static str {
+        match self {
+            Self::Mainnet => "/assets/svgs/bitcoin.svg",
+            Self::Testnet3 | Self::Testnet4 | Self::Regtest => "/assets/svgs/bitcoin-green.svg",
+            Self::Signet => "/assets/svgs/bitcoin-pink.svg",
+        }
+    }
+
+    pub fn bitcoin_triple_icon_src(self) -> &'static str {
+        match self {
+            Self::Mainnet => "/assets/svgs/3-bitcoin.svg",
+            Self::Testnet3 | Self::Testnet4 | Self::Regtest => "/assets/svgs/3-bitcoin-green.svg",
+            Self::Signet => "/assets/svgs/3-bitcoin-pink.svg",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
