@@ -13,8 +13,9 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ClientNetwork {
-    Bitcoin,
-    Testnet,
+    Mainnet,
+    Testnet3,
+    Testnet4,
     Signet,
     Regtest,
 }
@@ -22,8 +23,9 @@ enum ClientNetwork {
 impl ClientNetwork {
     fn as_str(self) -> &'static str {
         match self {
-            Self::Bitcoin => "bitcoin",
-            Self::Testnet => "testnet",
+            Self::Mainnet => "mainnet",
+            Self::Testnet3 => "testnet3",
+            Self::Testnet4 => "testnet4",
             Self::Signet => "signet",
             Self::Regtest => "regtest",
         }
@@ -31,8 +33,9 @@ impl ClientNetwork {
 
     fn into_bitcoin(self) -> bitcoin::Network {
         match self {
-            Self::Bitcoin => bitcoin::Network::Bitcoin,
-            Self::Testnet => bitcoin::Network::Testnet,
+            Self::Mainnet => bitcoin::Network::Bitcoin,
+            Self::Testnet3 => bitcoin::Network::Testnet,
+            Self::Testnet4 => bitcoin::Network::Testnet4,
             Self::Signet => bitcoin::Network::Signet,
             Self::Regtest => bitcoin::Network::Regtest,
         }
@@ -44,8 +47,9 @@ impl FromStr for ClientNetwork {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "bitcoin" | "mainnet" => Ok(Self::Bitcoin),
-            "testnet" => Ok(Self::Testnet),
+            "bitcoin" | "mainnet" => Ok(Self::Mainnet),
+            "testnet" | "testnet3" => Ok(Self::Testnet3),
+            "testnet4" => Ok(Self::Testnet4),
             "signet" => Ok(Self::Signet),
             "regtest" => Ok(Self::Regtest),
             other => bail!("unsupported bitcoin network: {other}"),
@@ -179,8 +183,11 @@ fn derive_account_address(
 
 fn standard_derivation_path(network: ClientNetwork, account_index: u32) -> String {
     let coin_type = match network {
-        ClientNetwork::Bitcoin => 0,
-        ClientNetwork::Testnet | ClientNetwork::Signet | ClientNetwork::Regtest => 1,
+        ClientNetwork::Mainnet => 0,
+        ClientNetwork::Testnet3
+        | ClientNetwork::Testnet4
+        | ClientNetwork::Signet
+        | ClientNetwork::Regtest => 1,
     };
 
     format!("m/84'/{coin_type}'/{account_index}'/0/0")
@@ -225,7 +232,7 @@ mod tests {
     #[test]
     fn derivation_path_uses_test_coin_type() {
         assert_eq!(
-            standard_derivation_path(ClientNetwork::Signet, 0),
+            standard_derivation_path(ClientNetwork::Testnet4, 0),
             "m/84'/1'/0'/0/0"
         );
     }
@@ -233,7 +240,7 @@ mod tests {
     #[test]
     fn derivation_path_uses_account_index() {
         assert_eq!(
-            standard_derivation_path(ClientNetwork::Bitcoin, 3),
+            standard_derivation_path(ClientNetwork::Mainnet, 3),
             "m/84'/0'/3'/0/0"
         );
     }

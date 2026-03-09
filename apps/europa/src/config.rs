@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BitcoinNetwork {
-    #[serde(alias = "mainnet", alias = "bitcoin")]
-    Bitcoin,
-    Testnet,
+    #[serde(alias = "bitcoin")]
+    Mainnet,
+    Testnet3,
+    Testnet4,
     Signet,
     Regtest,
 }
@@ -21,8 +22,9 @@ pub enum BitcoinNetwork {
 impl BitcoinNetwork {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Bitcoin => "bitcoin",
-            Self::Testnet => "testnet",
+            Self::Mainnet => "mainnet",
+            Self::Testnet3 => "testnet3",
+            Self::Testnet4 => "testnet4",
             Self::Signet => "signet",
             Self::Regtest => "regtest",
         }
@@ -34,6 +36,41 @@ pub struct AppConfig {
     pub network: BitcoinNetwork,
     pub host: String,
     pub port: u16,
+    pub required_confirmations: u32,
+    pub electrs_esplora_endpoint: String,
+    pub explorer_endpoint: String,
+    pub btc_mxn_endpoint: String,
+    pub test_mode_address: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NetworkEndpointMap {
+    #[serde(default, alias = "bitcoin")]
+    mainnet: Option<String>,
+    #[serde(default)]
+    testnet3: Option<String>,
+    #[serde(default)]
+    testnet4: Option<String>,
+    #[serde(default)]
+    signet: Option<String>,
+    #[serde(default)]
+    regtest: Option<String>,
+}
+
+impl NetworkEndpointMap {
+    fn resolve(&self, network: BitcoinNetwork, label: &str) -> Result<String> {
+        let value = match network {
+            BitcoinNetwork::Mainnet => self.mainnet.as_deref(),
+            BitcoinNetwork::Testnet3 => self.testnet3.as_deref(),
+            BitcoinNetwork::Testnet4 => self.testnet4.as_deref(),
+            BitcoinNetwork::Signet => self.signet.as_deref(),
+            BitcoinNetwork::Regtest => self.regtest.as_deref(),
+        }
+        .ok_or_else(|| anyhow!("{label} is missing for {}", network.as_str()))?;
+
+        normalize_config_url(value, label)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,12 +79,22 @@ struct RawConfig {
     network: BitcoinNetwork,
     host: String,
     port: u16,
+    required_confirmations: u32,
+    electrs_esplora_endpoints: NetworkEndpointMap,
+    explorer_endpoints: NetworkEndpointMap,
+    btc_mxn_endpoint: String,
+    #[serde(default)]
+    test_mode_address: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ClientConfig {
     network: &'static str,
     storage_key: String,
+    required_confirmations: u32,
+    electrs_esplora_endpoint: String,
+    explorer_endpoint: String,
+    test_mode_address: Option<String>,
 }
 
 impl AppConfig {
@@ -66,11 +113,28 @@ impl AppConfig {
         if raw.host.trim().is_empty() {
             bail!("config host must not be empty");
         }
+        if raw.required_confirmations == 0 {
+            bail!("config required_confirmations must be greater than zero");
+        }
+
+        let electrs_esplora_endpoint = raw
+            .electrs_esplora_endpoints
+            .resolve(raw.network, "electrs_esplora_endpoints")?;
+        let explorer_endpoint = raw
+            .explorer_endpoints
+            .resolve(raw.network, "explorer_endpoints")?;
+        let btc_mxn_endpoint = normalize_config_url(&raw.btc_mxn_endpoint, "btc_mxn_endpoint")?;
+        let test_mode_address = normalize_optional_config_value(raw.test_mode_address);
 
         Ok(Self {
             network: raw.network,
-            host: raw.host,
+            host: raw.host.trim().to_owned(),
             port: raw.port,
+            required_confirmations: raw.required_confirmations,
+            electrs_esplora_endpoint,
+            explorer_endpoint,
+            btc_mxn_endpoint,
+            test_mode_address,
         })
     }
 
@@ -82,8 +146,37 @@ impl AppConfig {
         ClientConfig {
             network: self.network.as_str(),
             storage_key: format!("mibilleterabitcoin.wallet.v1.{}", self.network.as_str()),
+            required_confirmations: self.required_confirmations,
+            electrs_esplora_endpoint: self.electrs_esplora_endpoint.clone(),
+            explorer_endpoint: self.explorer_endpoint.clone(),
+            test_mode_address: self.test_mode_address.clone(),
         }
     }
+}
+
+fn normalize_config_url(value: &str, label: &str) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        bail!("{label} must not be empty");
+    }
+
+    let normalized = trimmed.trim_end_matches('/').to_owned();
+    if normalized.is_empty() {
+        bail!("{label} must not be empty");
+    }
+
+    Ok(normalized)
+}
+
+fn normalize_optional_config_value(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_owned())
+        }
+    })
 }
 
 fn parse_config_path() -> Result<PathBuf> {

@@ -6,8 +6,8 @@
   --button-hover: #464a55;
   --primary: #f7931a;
   --secondary: #ffffff;
-  --status-red: #f7481a;
-  --status-green: #4cf71a;
+  --status-red: #fba088;
+  --status-green: #70de8c;
   --status-yellow: #ffcc00;
   --button-disabled-bg: #494d5a;
   --button-disabled-fg: #777e91;
@@ -344,8 +344,7 @@ a {
   margin: 0;
   text-align: center;
   font-size: var(--text-md);
-  line-height: 1.45;
-  color: #abb0bb;
+  color: var(--muted);
 }
 
 .landing-video-button {
@@ -440,8 +439,7 @@ a {
 .unlock-about {
   text-align: center;
   font-size: var(--text-sm);
-  line-height: 1.45;
-  color: #abb0bb;
+  color: var(--muted);
 }
 
 .unlock-delete-link {
@@ -1044,25 +1042,29 @@ code {
   min-height: 606px;
   padding: 0;
   gap: 0;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+.wallet-card-scroll {
+  height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;
 }
 
-.wallet-card::-webkit-scrollbar {
+.wallet-card-scroll::-webkit-scrollbar {
   display: none;
 }
 
 .wallet-scroll-fade {
-  position: sticky;
+  position: absolute;
+  left: 0;
+  right: 0;
   bottom: 0;
-  align-self: stretch;
   width: 100%;
-  margin-top: -72px;
-  margin-left: 0;
-  margin-right: 0;
   height: 72px;
-  flex: 0 0 auto;
   pointer-events: none;
   background: linear-gradient(
     180deg,
@@ -1104,9 +1106,11 @@ code {
 }
 
 .wallet-card-body {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 22px;
   padding: 20px;
+  min-height: 100%;
 }
 
 .wallet-account-card {
@@ -1331,6 +1335,128 @@ code {
   height: 16px;
 }
 
+.wallet-receive-screen {
+  gap: 22px;
+}
+
+.wallet-receive-topbar {
+  display: flex;
+  align-items: center;
+}
+
+.wallet-receive-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.wallet-receive-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--secondary);
+}
+
+.wallet-receive-description {
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.wallet-receive-qr-shell {
+  position: relative;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--button);
+}
+
+.wallet-receive-qr-shell[data-qr-ready="true"] {
+  background: #fff;
+}
+
+.wallet-receive-qr {
+  width: 164px;
+  height: 164px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wallet-receive-qr canvas,
+.wallet-receive-qr img {
+  width: 164px;
+  height: 164px;
+  display: block;
+}
+
+.wallet-receive-qr-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  border-radius: 999px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+}
+
+.wallet-receive-qr-badge-icon {
+  width: 30px;
+  height: 30px;
+  max-width: none;
+}
+
+.wallet-receive-address-block {
+  display: grid;
+  gap: 12px;
+}
+
+.wallet-receive-address-label {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--secondary);
+}
+
+.wallet-receive-address-shell {
+  border-radius: var(--radius);
+  background: var(--button);
+  padding: 14px 16px;
+}
+
+.wallet-receive-address {
+  font-size: var(--text-sm);
+  color: var(--secondary);
+  word-break: break-all;
+}
+
+.wallet-receive-footer {
+  margin-top: auto;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.wallet-receive-footer-icon {
+  width: 54px;
+  height: auto;
+}
+
+.wallet-receive-footer-copy {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.wallet-receive-footer-emphasis {
+  color: var(--secondary);
+}
+
 .wallet-balance-block {
   display: grid;
   justify-items: center;
@@ -1440,6 +1566,10 @@ code {
   gap: 14px;
 }
 
+.wallet-transactions-section.hidden {
+  display: none;
+}
+
 .wallet-transactions-section[data-drag-enabled="true"]:hover {
   cursor: grab;
 }
@@ -1463,13 +1593,210 @@ code {
 }
 
 .wallet-transaction-card {
-  min-height: 58px;
-  border-radius: 14px;
+  position: relative;
+  min-height: 64px;
+  border-radius: var(--radius);
   background: var(--button);
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
 }
 
-.wallet-transaction-card-empty {
-  opacity: 0.9;
+.wallet-transaction-card-skeleton {
+  position: relative;
+  overflow: hidden;
+  transform: none;
+  background: rgba(61, 65, 75, 0.86);
+}
+
+.wallet-transaction-card-skeleton:hover {
+  transform: none;
+  background: rgba(61, 65, 75, 0.86);
+}
+
+.wallet-transaction-card-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.08) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: wallet-skeleton-shimmer 1.2s linear infinite;
+}
+
+@keyframes wallet-skeleton-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.wallet-transaction-copy {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.wallet-transaction-media {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.wallet-transaction-bitcoin-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.wallet-transaction-status-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--button);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wallet-transaction-status-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.wallet-transaction-status-icon-loading {
+  animation: wallet-transaction-loader-spin 900ms linear infinite;
+}
+
+@keyframes wallet-transaction-loader-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.wallet-transaction-title {
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--secondary);
+}
+
+.wallet-transaction-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wallet-transaction-explorer {
+  width: 14px;
+  min-height: 14px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  transform: none;
+  background: transparent;
+}
+
+.wallet-transaction-explorer:hover,
+.wallet-transaction-explorer:active {
+  transform: none;
+  background: transparent;
+}
+
+.wallet-transaction-explorer:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+.wallet-transaction-explorer-icon {
+  width: 12px;
+  height: 12px;
+  transition: transform 160ms ease;
+}
+
+.wallet-transaction-explorer:hover .wallet-transaction-explorer-icon,
+.wallet-transaction-explorer:focus-visible .wallet-transaction-explorer-icon {
+  transform: scale(1.08);
+}
+
+.wallet-transaction-subtitle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.wallet-transaction-subtitle-label {
+  flex: 0 0 auto;
+  color: var(--secondary);
+}
+
+.wallet-transaction-subtitle-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wallet-transaction-amount {
+  margin-top: 6px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--secondary);
+  text-align: right;
+}
+
+.wallet-empty-state {
+  flex: 1 1 auto;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.wallet-empty-state.hidden {
+  display: none;
+}
+
+.wallet-empty-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--muted);
+  -webkit-mask: url("/assets/svgs/mibilleterabitcoin-icon-disabled.svg") center / contain no-repeat;
+  mask: url("/assets/svgs/mibilleterabitcoin-icon-disabled.svg") center / contain no-repeat;
+}
+
+.wallet-empty-copy {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .network-note {
