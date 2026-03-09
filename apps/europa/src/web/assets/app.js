@@ -642,10 +642,18 @@ function bindEventHandlers() {
 
 async function boot() {
   try {
-    await init();
+    const walletEngineResponse = await fetch("/assets/pkg/mibilleterabitcoin_common_bg.wasm");
+    if (!walletEngineResponse.ok) {
+      throw new Error(
+        `No se pudo descargar el motor de billeteras (${walletEngineResponse.status}).`,
+      );
+    }
+
+    await init(walletEngineResponse);
     initWallet();
     state.walletReady = true;
   } catch (error) {
+    console.error("wallet engine init failed:", error);
     setFlash("No se pudo cargar el motor de billeteras en el navegador.");
   }
 
