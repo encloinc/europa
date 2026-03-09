@@ -1,47 +1,79 @@
-# mibilleterabitcoin
+Aquí está todo lo que faltaba traducido al español:
 
-Bitcoin wallet onboarding monorepo with Turborepo, a Rust SSR app, and a separate WASM crate for browser-side wallet logic.
+---
 
-## Layout
+# Mi Billetera Bitcoin
 
-- `apps/europa`: the SSR MAUD app and static web assets under `src/web/assets`
-- `crates/mibilleterabitcoin-common`: the separate WASM crate that handles mnemonic generation, import validation, and address derivation in the browser
+Video: ...
+Sitio web: [https://mibilleterabitcoin.com](https://mibilleterabitcoin.com)
 
-The server only serves the SSR page and static assets. Mnemonic generation, mnemonic import validation, HD derivation, and encrypted local storage all happen in the browser through the `mibilleterabitcoin-common` WASM package emitted into `apps/europa/src/web/assets/pkg`.
+Una billetera que cualquier mexicano con un navegador puede usar para empezar a ahorrar bitcoin de forma **autocustodia**.
 
-## Run
+---
+
+## Stack
+
+Este repositorio es un **monorepo manejado por Turborepo** con dos *crates*:
+
+* **`mibilleterabitcoin-common`**: contiene los *wasm bindgens* que utiliza el cliente presentado al usuario (el cual es renderizado en SSR por **MAUD**).
+
+---
+
+## Estructura
+
+* `apps/europa`: la aplicación SSR en MAUD y los recursos estáticos del sitio ubicados en `src/web/assets`
+* `crates/mibilleterabitcoin-common`: el crate WASM separado que maneja la generación de mnemónicos, validación de importación de frases de recuperación y derivación de direcciones en el navegador
+
+El servidor **solo sirve la página SSR y los recursos estáticos**.
+
+La generación del mnemónico, validación de la frase de recuperación, derivación HD y almacenamiento local cifrado ocurren **directamente en el navegador** a través del paquete WASM `mibilleterabitcoin-common`, generado dentro de `apps/europa/src/web/assets/pkg`.
+
+---
+
+## Ejecutar
 
 ```bash
 npm install
-npm run dev:mibilleterabitcoin
+npm run dev
 ```
 
-## Config
+---
 
-Pass a JSON file through `--config`:
+## Configuración
+
+Pasa un archivo JSON mediante `--config`:
 
 ```json
 {
-  "network": "testnet",
+  "network": "mainnet",
   "host": "127.0.0.1",
-  "port": 3000
+  "port": 3000,
+  "required_confirmations": 1,
+  "tx_refresh_pages_max": 3,
+  "electrs_esplora_endpoints": {
+    "mainnet": "https://mempool.space/api",
+    "testnet3": "https://mempool.space/testnet/api",
+    "testnet4": "https://mempool.space/testnet4/api",
+    "signet": "https://mempool.space/signet/api",
+    "regtest": "http://127.0.0.1:3002"
+  },
+  "explorer_endpoints": {
+    "mainnet": "https://mempool.space",
+    "testnet3": "https://mempool.space/testnet",
+    "testnet4": "https://mempool.space/testnet4",
+    "signet": "https://mempool.space/signet",
+    "regtest": "http://127.0.0.1:3002"
+  },
+  "btc_mxn_endpoint": "https://api.coinbase.com/v2/prices/BTC-MXN/spot"
 }
+
 ```
 
-Supported `network` values are `bitcoin`, `testnet`, `signet`, and `regtest`.
+Los valores soportados para `network` son:
 
-## Rebuild Browser Wallet
+* `bitcoin`
+* `testnet3`
+* `testnet4`
+* `signet`
+* `regtest`
 
-If you change `crates/mibilleterabitcoin-common/src/lib.rs`, rebuild it with:
-
-```bash
-npm run build:wasm
-```
-
-## Direct Rust Run
-
-If you want to bypass Turbo and run the Rust app directly:
-
-```bash
-./run.sh
-```
