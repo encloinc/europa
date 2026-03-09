@@ -4,7 +4,8 @@
 
 # Mi Billetera Bitcoin
 
-Video: ...
+VIDEO PITCH: ...
+
 Sitio web: [https://mibilleterabitcoin.com](https://mibilleterabitcoin.com)
 
 Una billetera que cualquier mexicano con un navegador puede usar para empezar a ahorrar bitcoin de forma **autocustodia**.
